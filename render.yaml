@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: whatsapp-site-bot
+    env: python
+    buildCommand: ""
+    startCommand: gunicorn bot:app
