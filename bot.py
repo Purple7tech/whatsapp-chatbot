@@ -15,8 +15,8 @@ SCOPES = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapi
 creds = service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
 
 # === Google Sheet & Drive Settings ===
-SHEET_ID = '' #'1IfaWhGYJzakJb4Xzk_A1RHVeTvJBlSDMOsF1cDC1VM0'
-SHEET_RANGE = ''#'chatbot_data!A1'
+SHEET_ID = '1IfaWhGYJzakJb4Xzk_A1RHVeTvJBlSDMOsF1cDC1VM0'
+SHEET_RANGE = 'chatbot_data!A1'
 DRIVE_FOLDER_ID = '1OqMqEPU5rnBUbRf1nFyNio2_pnX3pXMq'
 
 # === Define Form Fields ===
