@@ -1,158 +1,115 @@
 from flask import Flask, request
-from twilio.twiml.messaging_response import MessagingResponse
+import requests
+import os
+import io
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
-import os
-import io
-import requests
 
 app = Flask(__name__)
 
-VERIFY_TOKEN = "tarun_123"
+VERIFY_TOKEN = 'tarun_123'
+ACCESS_TOKEN = os.getenv('META_ACCESS_TOKEN')
+PHONE_NUMBER_ID = os.getenv('PHONE_NUMBER_ID')
 
-@app.route("/", methods=["GET", "POST"])
-def webhook():
-    if request.method == "GET":
-        if request.args.get("hub.verify_token") == VERIFY_TOKEN:
-            return request.args.get("hub.challenge"), 200
-        return "Invalid verification token", 403
-    
-
-# === Google API Setup ===
+# Google API setup
 SERVICE_ACCOUNT_FILE = 'credentials.json'
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
+
 creds = service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
-
-# === Google Sheet & Drive Settings ===
-SHEET_ID = '1IfaWhGYJzakJb4Xzk_A1RHVeTvJBlSDMOsF1cDC1VM0'
-SHEET_RANGE = 'chatbot_data!A1'
-DRIVE_FOLDER_ID = '1OqMqEPU5rnBUbRf1nFyNio2_pnX3pXMq'
-
-# === Define Form Fields ===
-form_fields = [
-    {"question": "Owner name?", "field": "owner_name"},
-    {"question": "Owner phone number?", "field": "owner_phone"},
-    {"question": "Property address?", "field": "property_address"},
-    {"question": "Survey number?", "field": "survey_number"},
-    {"question": "Village / Taluk / District?", "field": "location"},
-    {"question": "Type of property (Vacant / Built-up / Agricultural)?", "field": "property_type"},
-    {"question": "Extent (Sq.ft or Cent)?", "field": "extent"},
-    {"question": "Current usage (Residential / Commercial / Agricultural)?", "field": "usage"},
-    {"question": "Boundaries (North / South / East / West)?", "field": "boundaries"},
-    {"question": "Any encroachments?", "field": "encroachments"},
-    {"question": "Building details (floors, structure)?", "field": "building_details"},
-    {"question": "Inspector name?", "field": "inspector_name"},
-    {"question": "Any remarks or notes?", "field": "remarks"}
-]
-
-image_fields = ["north_img", "south_img", "east_img", "west_img"]
-
-# === State Tracking ===
-user_data = {}
-user_index = {}
-
-# Create a single instance of the Google Drive and Sheets services
-drive_service = build('drive', 'v3', credentials=creds)
 sheet_service = build('sheets', 'v4', credentials=creds)
+drive_service = build('drive', 'v3', credentials=creds)
 
-@app.route("/", methods=["POST"])
-def bot():
-    user_msg = request.values.get("Body", "").strip().lower()
-    user_phone = request.values.get("From", "")
-    num_media = int(request.values.get("NumMedia", 0))
-    response = MessagingResponse()
+SHEET_ID = 'YOUR_SHEET_ID'
+SHEET_RANGE = 'chatbot_data!A1'
+DRIVE_FOLDER_ID = 'YOUR_DRIVE_FOLDER_ID'
 
-    # Initialize new user 
-    if user_phone not in user_index:
-        user_data[user_phone] = {}
-        user_index[user_phone] = 0
-        if user_msg == 'hi':
-            response.message("📝 Welcome to the Site Appraisal Bot.\nLet's begin.")
-            response.message(form_fields[0]["question"])
-        else:
-            response.message("⚠️ Please start by saying 'hi'.")
-        return str(response)
+user_sessions = {}
 
-    index = user_index[user_phone]
+@app.route('/', methods=['GET', 'POST'])
+def webhook():
+    if request.method == 'GET':
+        if request.args.get('hub.verify_token') == VERIFY_TOKEN:
+            return request.args.get('hub.challenge'), 200
+        return 'Verification failed', 403
 
-    # Handle form text inputs
-    if index < len(form_fields):
-        field = form_fields[index]["field"]
-        if user_msg:
-            user_data[user_phone][field] = user_msg
-            user_index[user_phone] += 1
-            index += 1
-            if index < len(form_fields):
-                response.message(form_fields[index]["question"])
-            else:
-                response.message("📸 Now, please send the image of the **North side** of the site.")
-        else:
-            response.message("⚠️ Please enter a valid response.")
-        return str(response)
+    if request.method == 'POST':
+        data = request.get_json()
+        if data['object'] == 'whatsapp_business_account':
+            for entry in data['entry']:
+                for change in entry['changes']:
+                    value = change['value']
+                    messages = value.get('messages')
+                    if messages:
+                        message = messages[0]
+                        phone = message['from']
+                        text = message['text']['body'] if 'text' in message else None
+                        media = message.get('image')
 
-    # Handle image uploads (North, South, East, West)
-    image_index = index - len(form_fields)
-    if image_index < len(image_fields):
-        if num_media > 0:
-            media_url = request.values.get("MediaUrl0")
-            media_type = request.values.get("MediaContentType0")
-            file_name = f"{user_phone.replace(':', '_')}_{image_fields[image_index]}.{media_type.split('/')[-1]}"
+                        # Initialize session
+                        session = user_sessions.get(phone, {'step': 0, 'data': {}})
+                        step = session['step']
 
-            # Download the image
-            media_resp = requests.get(media_url, auth=(os.getenv("TWILIO_SID"), os.getenv("TWILIO_AUTH_TOKEN")))
-            file_io = io.BytesIO(media_resp.content)
-            # Upload to Google Drive
-            media = MediaIoBaseUpload(file_io, mimetype=media_type)
-            file_metadata = {'name': file_name, 'parents': [DRIVE_FOLDER_ID]}
-            file = drive_service.files().create(body=file_metadata, media_body=media, fields='id').execute()
-            file_link = f"https://drive.google.com/uc?id={file.get('id')}"
+                        # Example flow: Collect 2 text answers and 1 image
+                        if step == 0 and text:
+                            session['data']['name'] = text
+                            session['step'] += 1
+                            send_whatsapp_message(phone, "✅ Noted your name.\nWhat is your address?")
+                        elif step == 1 and text:
+                            session['data']['address'] = text
+                            session['step'] += 1
+                            send_whatsapp_message(phone, "📸 Please send a site image.")
+                        elif step == 2 and media:
+                            media_id = media['id']
+                            file_link = download_and_upload_image(media_id, phone)
+                            session['data']['image_url'] = file_link
 
-            # Save image link
-            user_data[user_phone][image_fields[image_index]] = file_link
-            user_index[user_phone] += 1
-            image_index += 1
+                            # Save to Google Sheets
+                            save_to_sheet(session['data'])
+                            send_whatsapp_message(phone, "✅ All data saved successfully.")
 
-            # Prompt next
-            if image_index < len(image_fields):
-                response.message(f"📸 Please send the image of the **{image_fields[image_index].split('_')[0].capitalize()} side**.")
-            else:
-                # Submit to Sheet
-                sheet = sheet_service.spreadsheets()
-                row_data = [
-                    user_data[user_phone].get("owner_name", ""),
-                    user_data[user_phone].get("owner_phone", ""),
-                    user_data[user_phone].get("property_address", ""),
-                    user_data[user_phone].get("survey_number", ""),
-                    user_data[user_phone].get("location", ""),
-                    user_data[user_phone].get("property_type", ""),
-                    user_data[user_phone].get("extent", ""),
-                    user_data[user_phone].get("usage", ""),
-                    user_data[user_phone].get("boundaries", ""),
-                    user_data[user_phone].get("encroachments", ""),
-                    user_data[user_phone].get("building_details", ""),
-                    user_data[user_phone].get("inspector_name", ""),
-                    user_data[user_phone].get("remarks", ""),
-                    user_data[user_phone].get("north_img", ""),
-                    user_data[user_phone].get("south_img", ""),
-                    user_data[user_phone].get("east_img", ""),
-                    user_data[user_phone].get("west_img", "")
-                ]
-                sheet.values().append(
-                    spreadsheetId=SHEET_ID,
-                    range=SHEET_RANGE,
-                    valueInputOption="USER_ENTERED",
-                    body={"values": [row_data]}
-                ).execute()
-                response.message("✅ Site appraisal data and images saved successfully.")
-                del user_index[user_phone]
-                del user_data[user_phone]
-        else:
-            response.message("⚠️ Please send an image (photo).")
-    else:
-        response.message("✅ Form is already completed.")
+                            # Reset session
+                            user_sessions.pop(phone, None)
+                        else:
+                            send_whatsapp_message(phone, "⚠️ Please provide a valid response.")
+                        user_sessions[phone] = session
+        return 'OK', 200
 
-    return str(response)
+def send_whatsapp_message(to, message):
+    url = f"https://graph.facebook.com/v19.0/{PHONE_NUMBER_ID}/messages"
+    headers = {'Authorization': f'Bearer {ACCESS_TOKEN}', 'Content-Type': 'application/json'}
+    payload = {
+        'messaging_product': 'whatsapp',
+        'to': to,
+        'type': 'text',
+        'text': {'body': message}
+    }
+    requests.post(url, headers=headers, json=payload)
+
+def download_and_upload_image(media_id, phone):
+    # Get media URL
+    media_url = requests.get(
+        f"https://graph.facebook.com/v19.0/{media_id}",
+        headers={'Authorization': f'Bearer {ACCESS_TOKEN}'}
+    ).json()['url']
+
+    media_content = requests.get(media_url, headers={'Authorization': f'Bearer {ACCESS_TOKEN}'}).content
+    file_io = io.BytesIO(media_content)
+
+    # Upload to Drive
+    media_upload = MediaIoBaseUpload(file_io, mimetype='image/jpeg')
+    file_metadata = {'name': f'{phone}_site_image.jpg', 'parents': [DRIVE_FOLDER_ID]}
+    file = drive_service.files().create(body=file_metadata, media_body=media_upload, fields='id').execute()
+    file_link = f"https://drive.google.com/uc?id={file.get('id')}"
+    return file_link
+
+def save_to_sheet(data):
+    sheet_service.spreadsheets().values().append(
+        spreadsheetId=SHEET_ID,
+        range=SHEET_RANGE,
+        valueInputOption='USER_ENTERED',
+        body={'values': [[data.get('name'), data.get('address'), data.get('image_url')]]}
+    ).execute()
 
 if __name__ == "__main__":
-    app.run(debug=False)
+    app.run(host='0.0.0.0', port=10000)
