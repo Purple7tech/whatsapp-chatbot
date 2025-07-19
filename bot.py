@@ -9,8 +9,8 @@ from googleapiclient.http import MediaIoBaseUpload
 app = Flask(__name__)
 
 VERIFY_TOKEN = 'tarun_123'
-ACCESS_TOKEN = os.getenv('META_ACCESS_TOKEN')
-PHONE_NUMBER_ID = os.getenv('PHONE_NUMBER_ID')
+ACCESS_TOKEN = os.getenv('EAAKB8PQuIjABPHYsrmkZCYNw7pXxWqtzut6Qd362Up8sr0KY6qYUmkNF7OkDGeo78BC8bhhAw7ODFbk4L4Kkl1kt6VxVTCtpLZA8aCklnPWY2DgoaWGpSA7VGZBigZCiJRDs41peGQpHECBOp8bneq57znL9ao5DNgVROGprhBM642eI9X8U02ZCW4c4nFp6zNZCF9yyK0tvdtwvWBtdDZAF8J2ZCSZB1xoFlTiZAIQTKPXgZDZD')
+PHONE_NUMBER_ID = os.getenv('728421923685994')
 
 # Google API setup
 SERVICE_ACCOUNT_FILE = 'credentials.json'
