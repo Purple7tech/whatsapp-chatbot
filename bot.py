@@ -53,7 +53,7 @@ def bot():
     num_media = int(request.values.get("NumMedia", 0))
     response = MessagingResponse()
 
-    # Initialize new user
+    # Initialize new user 
     if user_phone not in user_index:
         user_data[user_phone] = {}
         user_index[user_phone] = 0
@@ -92,7 +92,6 @@ def bot():
             # Download the image
             media_resp = requests.get(media_url, auth=(os.getenv("TWILIO_SID"), os.getenv("TWILIO_AUTH_TOKEN")))
             file_io = io.BytesIO(media_resp.content)
-
             # Upload to Google Drive
             media = MediaIoBaseUpload(file_io, mimetype=media_type)
             file_metadata = {'name': file_name, 'parents': [DRIVE_FOLDER_ID]}
