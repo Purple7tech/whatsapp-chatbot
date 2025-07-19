@@ -9,6 +9,16 @@ import requests
 
 app = Flask(__name__)
 
+VERIFY_TOKEN = "tarun_123"
+
+@app.route("/", methods=["GET", "POST"])
+def webhook():
+    if request.method == "GET":
+        if request.args.get("hub.verify_token") == VERIFY_TOKEN:
+            return request.args.get("hub.challenge"), 200
+        return "Invalid verification token", 403
+    
+
 # === Google API Setup ===
 SERVICE_ACCOUNT_FILE = 'credentials.json'
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
