@@ -6,4 +6,4 @@ google-auth-httplib2==0.2.0
 pillow==10.4.0
 requests==2.32.4
 twilio==9.6.4
-gunicorn==23.0.0cdlvcnc;
+gunicorn==23.0.0
